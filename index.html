@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Algae Air Purifier Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --pond:#f1f6ee;
+    --surface:#ffffff;
+    --ink:#12241f;
+    --ink-soft:#4d6058;
+    --chlorophyll:#2f7a4f;
+    --chlorophyll-dark:#1f5636;
+    --water:#1b7a91;
+    --water-soft:#e3f1f4;
+    --led:#d98b3c;
+    --led-soft:#fbeedc;
+    --danger:#c1502e;
+    --line:#d7e2d5;
+    --shadow: 0 1px 0 rgba(18,36,31,0.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--pond);
+    color:var(--ink);
+    font-family:'Space Grotesk',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:40px;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- Header ---------- */
+  header{
+    padding:22px 16px 14px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#eaf4e6 0%, var(--pond) 100%);
+  }
+  header h1{
+    margin:0 0 4px;
+    font-size:22px;
+    font-weight:700;
+    letter-spacing:-0.01em;
+    line-height:1.15;
+  }
+  header p{
+    margin:0;
+    font-size:13px;
+    color:var(--ink-soft);
+    max-width:44ch;
+  }
+  .badge-row{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;}
+  .badge{
+    font-size:10.5px;
+    font-family:'IBM Plex Mono',monospace;
+    border:1px solid var(--line);
+    background:var(--surface);
+    padding:3px 8px;
+    border-radius:3px;
+    color:var(--ink-soft);
+  }
+  .badge.live{color:var(--chlorophyll-dark); border-color:var(--chlorophyll);}
+
+  /* ---------- Tabs ---------- */
+  nav.tabs{
+    position:sticky; top:0; z-index:40;
+    display:flex;
+    background:var(--surface);
+    border-bottom:1px solid var(--line);
+    overflow-x:auto;
+  }
+  nav.tabs button{
+    flex:none;
+    padding:12px 14px;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-soft);
+    background:none;
+    border:none;
+    border-bottom:2px solid transparent;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  nav.tabs button.active{
+    color:var(--chlorophyll-dark);
+    border-bottom-color:var(--chlorophyll);
+  }
+
+  main{padding:16px;}
+  section.tabpanel{display:none;}
+  section.tabpanel.active{display:block;}
+
+  /* ---------- Cards ---------- */
+  .card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .card h2{
+    font-size:13px;
+    text-transform:none;
+    margin:0 0 12px;
+    font-weight:600;
+    color:var(--ink);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .card h2 small{font-weight:400; color:var(--ink-soft); font-size:11px;}
+
+  /* ---------- Status strip ---------- */
+  .status-strip{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 12px;
+    border-radius:8px;
+    font-size:12.5px;
+    font-weight:600;
+    margin-bottom:14px;
+  }
+  .status-strip.run{background:var(--water-soft); color:var(--water);}
+  .status-strip.warn{background:var(--led-soft); color:#8a5a1c;}
+  .status-strip.stop{background:#fbeceb; color:var(--danger);}
+  .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none;}
+
+  /* ---------- Reactor visual ---------- */
+  .reactor-wrap{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+  svg#reactorSvg{width:100%; max-width:320px; height:auto;}
+  .bubble{
+    animation: rise linear infinite;
+    transform-origin:center;
+  }
+  @keyframes rise{
+    0%{ transform:translateY(0); opacity:0; }
+    10%{ opacity:0.9; }
+    90%{ opacity:0.5;}
+    100%{ transform:translateY(-92px); opacity:0; }
+  }
+  .algae-dot{ animation: drift ease-in-out infinite alternate; }
+  @keyframes drift{
+    0%{ transform:translate(0,0); }
+    100%{ transform:translate(4px,-6px); }
+  }
+  .fanblade{ transform-origin:center; animation: spin linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg);} }
+  .flowarrow{ animation:flow 1.4s linear infinite; }
+  @keyframes flow{ 0%{opacity:.15;} 50%{opacity:1;} 100%{opacity:.15;} }
+
+  /* ---------- Controls ---------- */
+  .ctrl{ margin-bottom:14px; }
+  .ctrl:last-child{margin-bottom:0;}
+  .ctrl label{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:12.5px; font-weight:600; margin-bottom:4px;
+  }
+  .ctrl label .val{ font-family:'IBM Plex Mono',monospace; color:var(--chlorophyll-dark); font-weight:600;}
+  .ctrl input[type=range]{
+    width:100%; accent-color:var(--chlorophyll); height:20px;
+  }
+  .ctrl .explain{
+    font-size:11px; color:var(--ink-soft); margin-top:4px; line-height:1.4;
+    display:none;
+  }
+  body.explain-on .ctrl .explain{ display:block; }
+
+  .preset-row{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+  .chip{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    padding:6px 9px;
+    border-radius:5px;
+    border:1px solid var(--line);
+    background:var(--pond);
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .chip:active{ background:var(--chlorophyll); color:#fff; }
+
+  .btnrow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;}
+  .btn{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:12.5px;
+    padding:9px 14px;
+    border-radius:6px;
+    border:1px solid var(--chlorophyll);
+    background:var(--chlorophyll);
+    color:#fff;
+    cursor:pointer;
+  }
+  .btn.secondary{ background:var(--surface); color:var(--ink); border-color:var(--line); }
+  .btn.danger{ background:var(--surface); color:var(--danger); border-color:var(--danger); }
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:12.5px; font-weight:600;}
+  .switch{ position:relative; width:38px; height:21px; flex:none;}
+  .switch input{ opacity:0; width:0; height:0;}
+  .slider-toggle{ position:absolute; cursor:pointer; inset:0; background:#c9d4c6; border-radius:20px; transition:.15s;}
+  .slider-toggle:before{ content:""; position:absolute; height:15px; width:15px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.15s;}
+  input:checked + .slider-toggle{ background:var(--chlorophyll);}
+  input:checked + .slider-toggle:before{ transform:translateX(17px); }
+
+  /* ---------- Dashboard grid ---------- */
+  .metric-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .metric{
+    border:1px solid var(--line);
+    border-radius:7px;
+    padding:10px 12px;
+    background:var(--pond);
+  }
+  .metric .m-label{ font-size:10.5px; color:var(--ink-soft); font-weight:600; margin-bottom:3px;}
+  .metric .m-val{ font-family:'IBM Plex Mono',monospace; font-size:18px; font-weight:600; color:var(--ink);}
+  .metric .m-unit{ font-size:11px; color:var(--ink-soft); font-weight:400;}
+  .metric.accent .m-val{ color:var(--chlorophyll-dark); }
+  .metric.water .m-val{ color:var(--water); }
+
+  /* performance bar */
+  .perfbar-track{ background:#e3ece0; border-radius:20px; height:14px; overflow:hidden; margin-top:6px;}
+  .perfbar-fill{ height:100%; background:linear-gradient(90deg,var(--chlorophyll),var(--water)); border-radius:20px; transition:width .3s; }
+
+  /* before/after */
+  .ba-row{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; }
+  .ba-col{ text-align:center; }
+  .ba-col .ba-tag{ font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-bottom:6px; font-weight:600;}
+  .ba-col .ba-metric{ font-family:'IBM Plex Mono',monospace; font-size:15px; margin-bottom:2px; }
+  .ba-arrow{ color:var(--chlorophyll); font-size:20px; }
+
+  canvas.chart{ max-height:170px; }
+
+  table.datatable{ width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:10.5px;}
+  table.datatable th, table.datatable td{ border-bottom:1px solid var(--line); padding:5px 4px; text-align:right;}
+  table.datatable th:first-child, table.datatable td:first-child{ text-align:left; }
+  .table-scroll{ max-height:220px; overflow-y:auto; border:1px solid var(--line); border-radius:6px;}
+
+  /* diagram tab */
+  .diagram-flow{ display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .diagram-node{
+    width:100%; max-width:280px;
+    border:1px solid var(--line);
+    background:var(--surface);
+    border-radius:6px;
+    padding:10px 12px;
+    font-size:12.5px;
+    font-weight:600;
+    display:flex; align-items:center; justify-content:space-between;
+    cursor:pointer;
+  }
+  .diagram-node .tag{ font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink-soft); font-weight:400;}
+  .diagram-arrow{ color:var(--ink-soft); font-size:14px; padding:2px 0; }
+  .node-detail{
+    font-size:11.5px; color:var(--ink-soft); max-width:280px; margin:2px 0 8px; line-height:1.4; display:none;
+  }
+  .node-detail.open{ display:block; }
+
+  .limit-list{ margin:0; padding-left:18px; font-size:12.5px; line-height:1.6; color:var(--ink-soft);}
+  .note{
+    font-size:11.5px; color:#8a5a1c; background:var(--led-soft); border:1px solid #eecfa4;
+    border-radius:6px; padding:8px 10px; margin-top:10px; line-height:1.5;
+  }
+
+  select{
+    width:100%; padding:8px 10px; font-family:'Space Grotesk',sans-serif; font-size:12.5px;
+    border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink);
+  }
+
+  h3.subhead{ font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); margin:0 0 8px; font-weight:600;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Algae Air Purifier Simulator</h1>
+  <p>Interactive educational model of CO₂ removal in an algae photobioreactor — not a validated real-world purification device.</p>
+  <div class="badge-row">
+    <span class="badge live" id="runBadge">● PAUSED</span>
+    <span class="badge">t = <span id="simTimeBadge">0</span> min</span>
+    <span class="badge">EDUCATIONAL MODEL</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+  <button class="tab-btn" data-tab="diagram">Engineering Diagram</button>
+  <button class="tab-btn" data-tab="experiment">Experiment Mode</button>
+  <button class="tab-btn" data-tab="report">Assumptions &amp; Report</button>
+</nav>
+
+<main>
+
+<!-- ===================== DASHBOARD TAB ===================== -->
+<section class="tabpanel active" id="tab-dashboard">
+
+  <div class="status-strip run" id="statusStrip">
+    <span class="dot"></span><span id="statusText">System stopped — press Start</span>
+  </div>
+
+  <div class="card">
+    <h2>Reactor <small>live visualization</small></h2>
+    <div class="reactor-wrap">
+      <svg id="reactorSvg" viewBox="0 0 300 340" xmlns="http://www.w3.org/2000/svg">
+        <text x="150" y="14" text-anchor="middle" font-size="10" font-family="IBM Plex Mono" fill="#4d6058">ROOM AIR</text>
+        <line x1="150" y1="20" x2="150" y2="38" stroke="#4d6058" stroke-width="1.5" class="flowarrow"/>
+        <polygon points="145,36 155,36 150,44" fill="#4d6058" class="flowarrow"/>
+
+        <rect x="115" y="46" width="70" height="22" rx="4" fill="#fff" stroke="#d7e2d5"/>
+        <text x="150" y="60" text-anchor="middle" font-size="9" font-family="IBM Plex Mono" fill="#12241f">AIR INTAKE</text>
+
+        <line x1="150" y1="68" x2="150" y2="84" stroke="#4d6058" stroke-width="1.5" class="flowarrow"/>
+        <polygon points="145,82 155,82 150,90" fill="#4d6058" class="flowarrow"/>
+
+        <circle cx="150" cy="102" r="16" fill="#e3f1f4" stroke="#1b7a91"/>
+        <g id="fanGroup" class="fanblade" style="transform-origin:150px 102px;">
+          <line x1="150" y1="90" x2="150" y2="114" stroke="#1b7a91" stroke-width="2.5"/>
+          <line x1="138" y1="102" x2="162" y2="102" stroke="#1b7a91" stroke-width="2.5"/>
+        </g>
+        <text x="150" y="128" text-anchor="middle" font-size="9" font-family="IBM Plex Mono" fill="#12241f">FAN</text>
+
+        <line x1="150" y1="132" x2="150" y2="146" stroke="#4d6058" stroke-width="1.5" class="flowarrow"/>
+        <polygon points="145,144 155,144 150,152" fill="#4d6058" class="flowarrow"/>
+
+        <!-- LED -->
+        <rect x="70" y="150" width="160" height="8" rx="2" fill="#d98b3c" id="ledBar" opacity="0.5"/>
+        <text x="150" y="146" text-anchor="middle" font-size="8" font-family="IBM Plex Mono" fill="#8a5a1c">LED LIGHT</text>
+
+        <!-- tank -->
+        <rect x="55" y="162" width="190" height="120" rx="8" fill="#eaf4e6" stroke="#2f7a4f" stroke-width="1.5"/>
+        <clipPath id="tankClip"><rect x="57" y="164" width="186" height="116" rx="7"/></clipPath>
+        <g clip-path="url(#tankClip)">
+          <g id="algaeGroup"></g>
+          <g id="bubbleGroup"></g>
+        </g>
+        <text x="150" y="300" text-anchor="middle" font-size="9" font-family="IBM Plex Mono" fill="#1f5636" font-weight="600">ALGAE BIOREACTOR</text>
+
+        <line x1="150" y1="282" x2="150" y2="296" stroke="#4d6058" stroke-width="1.5" class="flowarrow"/>
+        <line x1="150" y1="312" x2="150" y2="326" stroke="#4d6058" stroke-width="1.5" class="flowarrow"/>
+        <polygon points="145,324 155,324 150,332" fill="#4d6058" class="flowarrow"/>
+        <rect x="105" y="332" width="90" height="0" fill="none"/>
+        <text x="150" y="338" text-anchor="middle" font-size="9" font-family="IBM Plex Mono" fill="#1b7a91" font-weight="600">CLEANER AIR OUT</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Simulation controls</h2>
+    <div class="btnrow">
+      <button class="btn" id="btnStart">▶ Start</button>
+      <button class="btn secondary" id="btnPause">⏸ Pause</button>
+      <button class="btn danger" id="btnReset">↻ Reset</button>
+    </div>
+    <div class="ctrl" style="margin-top:14px;">
+      <label>Simulation speed <span class="val" id="speedVal">1×</span></label>
+      <input type="range" id="speedSlider" min="0" max="4" step="1" value="0">
+    </div>
+    <div class="toggle-row">
+      <span>Explain mode</span>
+      <label class="switch"><input type="checkbox" id="explainToggle"><span class="slider-toggle"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span>Sensor noise</span>
+      <label class="switch"><input type="checkbox" id="noiseToggle" checked><span class="slider-toggle"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span>Auto mode <span class="mono" style="font-size:10px;color:var(--ink-soft);">(holds target CO₂)</span></span>
+      <label class="switch"><input type="checkbox" id="autoToggle"><span class="slider-toggle"></span></label>
+    </div>
+    <div class="ctrl" id="autoTargetCtrl" style="display:none;">
+      <label>Target CO₂ <span class="val"><span id="autoTargetVal">800</span> ppm</span></label>
+      <input type="range" id="autoTargetSlider" min="400" max="1200" step="10" value="800">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>CO₂ input</h2>
+    <div class="preset-row">
+      <span class="chip" data-co2="420">Outdoor ~420</span>
+      <span class="chip" data-co2="800">Indoor ~800</span>
+      <span class="chip" data-co2="2000">High ~2000</span>
+    </div>
+    <div class="ctrl">
+      <label>Inlet CO₂ concentration <span class="val"><span id="co2Val">800</span> ppm</span></label>
+      <input type="range" id="co2Slider" min="350" max="3000" step="10" value="800">
+      <div class="explain">CO₂ is the primary carbon source considered in this simplified algae photosynthesis model.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Environment</h2>
+    <div class="ctrl">
+      <label>Light intensity <span class="val"><span id="lightVal">70</span>%</span></label>
+      <input type="range" id="lightSlider" min="0" max="100" step="1" value="70">
+      <div class="explain">Light provides energy for photosynthesis. Effect saturates at high intensity rather than growing without limit.</div>
+    </div>
+    <div class="ctrl">
+      <label>Temperature <span class="val"><span id="tempVal">25</span>°C</span></label>
+      <input type="range" id="tempSlider" min="10" max="40" step="1" value="25">
+      <div class="explain">Activity peaks near an optimum temperature (~25°C) and falls off on either side.</div>
+    </div>
+    <div class="ctrl">
+      <label>pH <span class="val"><span id="phVal">7.5</span></span></label>
+      <input type="range" id="phSlider" min="5" max="10" step="0.1" value="7.5">
+      <div class="explain">Activity peaks near an optimum pH (~7.5) and falls off away from it.</div>
+    </div>
+    <div class="ctrl">
+      <label>Nutrient availability <span class="val"><span id="nutrientVal">100</span>%</span></label>
+      <input type="range" id="nutrientSlider" min="10" max="100" step="1" value="100">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Reactor &amp; airflow</h2>
+    <div class="ctrl">
+      <label>Airflow <span class="val"><span id="airflowVal">20</span> L/min</span></label>
+      <input type="range" id="airflowSlider" min="1" max="100" step="1" value="20">
+      <div class="explain">Airflow controls how quickly air passes through the reactor. Higher flow generally means less contact time.</div>
+    </div>
+    <div class="ctrl">
+      <label>Reactor volume <span class="val"><span id="volumeVal">30</span> L</span></label>
+      <input type="range" id="volumeSlider" min="1" max="100" step="1" value="30">
+    </div>
+    <div class="ctrl">
+      <label>Initial / current biomass <span class="val"><span id="biomassVal">2.0</span> g/L</span></label>
+      <input type="range" id="biomassSlider" min="0.1" max="10" step="0.1" value="2">
+      <div class="explain">Greater active biomass can increase modeled photosynthetic capacity, up to a saturation limit.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Scenario presets</h2>
+    <div class="preset-row">
+      <span class="chip" data-scenario="A">A · Normal room</span>
+      <span class="chip" data-scenario="B">B · High CO₂</span>
+      <span class="chip" data-scenario="C">C · Low light</span>
+      <span class="chip" data-scenario="D">D · High airflow</span>
+      <span class="chip" data-scenario="E">E · Poor temperature</span>
+      <span class="chip" data-scenario="F">F · Optimal</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Live sensors <small>simulated</small></h2>
+    <div class="metric-grid">
+      <div class="metric accent"><div class="m-label">CO₂ IN</div><div class="m-val" id="mCo2In">800<span class="m-unit"> ppm</span></div></div>
+      <div class="metric accent"><div class="m-label">CO₂ OUT</div><div class="m-val" id="mCo2Out">800<span class="m-unit"> ppm</span></div></div>
+      <div class="metric water"><div class="m-label">REMOVAL EFFICIENCY</div><div class="m-val" id="mEff">0<span class="m-unit"> %</span></div></div>
+      <div class="metric water"><div class="m-label">O₂ AT OUTLET</div><div class="m-val" id="mO2">20.9<span class="m-unit"> %</span></div></div>
+      <div class="metric"><div class="m-label">BIOMASS</div><div class="m-val" id="mBiomass">2.00<span class="m-unit"> g/L</span></div></div>
+      <div class="metric"><div class="m-label">GROWTH RATE</div><div class="m-val" id="mGrowth">0.0<span class="m-unit"> %/min</span></div></div>
+      <div class="metric"><div class="m-label">RESIDENCE TIME</div><div class="m-val" id="mResidence">90<span class="m-unit"> s</span></div></div>
+      <div class="metric"><div class="m-label">PHOTOSYNTHETIC ACTIVITY</div><div class="m-val" id="mActivity">0<span class="m-unit"> %</span></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Simulation performance index <small>not a certified metric</small></h2>
+    <div class="perfbar-track"><div class="perfbar-fill" id="perfFill" style="width:0%;"></div></div>
+    <div style="margin-top:6px; font-family:'IBM Plex Mono',monospace; font-size:13px;" id="perfLabel">0%</div>
+  </div>
+
+  <div class="card">
+    <h2>Before / after comparison</h2>
+    <div class="ba-row">
+      <div class="ba-col">
+        <div class="ba-tag">Before</div>
+        <div class="ba-metric" id="baCo2Before">800 ppm</div>
+        <div class="ba-metric" id="baO2Before">20.9%</div>
+        <div class="ba-metric" id="baActBefore">0% activity</div>
+      </div>
+      <div class="ba-arrow">→</div>
+      <div class="ba-col">
+        <div class="ba-tag">After</div>
+        <div class="ba-metric" id="baCo2After">800 ppm</div>
+        <div class="ba-metric" id="baO2After">20.9%</div>
+        <div class="ba-metric" id="baActAfter">0% activity</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Energy consumption <small>estimate</small></h2>
+    <div class="ctrl">
+      <label>Fan power <span class="val"><span id="fanPowerVal">15</span> W</span></label>
+      <input type="range" id="fanPowerSlider" min="1" max="60" step="1" value="15">
+    </div>
+    <div class="ctrl">
+      <label>LED power <span class="val"><span id="ledPowerVal">30</span> W</span></label>
+      <input type="range" id="ledPowerSlider" min="1" max="100" step="1" value="30">
+    </div>
+    <div class="ctrl">
+      <label>Pump power <span class="val"><span id="pumpPowerVal">10</span> W</span></label>
+      <input type="range" id="pumpPowerSlider" min="1" max="60" step="1" value="10">
+    </div>
+    <div class="metric-grid" style="margin-top:8px;">
+      <div class="metric"><div class="m-label">ENERGY / HOUR</div><div class="m-val" id="mEnergyHr">0.055<span class="m-unit"> kWh</span></div></div>
+      <div class="metric"><div class="m-label">ENERGY / DAY</div><div class="m-val" id="mEnergyDay">1.32<span class="m-unit"> kWh</span></div></div>
+      <div class="metric" style="grid-column:1/-1;"><div class="m-label">ENERGY PER kg CO₂ REMOVED</div><div class="m-val" id="mEnergyPerKg">—<span class="m-unit"> kWh/kg</span></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>CO₂ concentration over time</h2>
+    <canvas class="chart" id="chartCo2"></canvas>
+  </div>
+  <div class="card">
+    <h2>O₂ % and removal efficiency % over time</h2>
+    <canvas class="chart" id="chartEff"></canvas>
+  </div>
+  <div class="card">
+    <h2>Algae biomass over time</h2>
+    <canvas class="chart" id="chartBiomass"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Data log <small><span id="rowCount">0</span> rows</small></h2>
+    <div class="table-scroll">
+      <table class="datatable">
+        <thead><tr><th>t(min)</th><th>CO₂ in</th><th>CO₂ out</th><th>O₂%</th><th>Biomass</th><th>Temp</th><th>pH</th><th>Flow</th></tr></thead>
+        <tbody id="dataTableBody"></tbody>
+      </table>
+    </div>
+    <div class="btnrow" style="margin-top:10px;">
+      <button class="btn secondary" id="btnExportCsv">Export CSV</button>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== DIAGRAM TAB ===================== -->
+<section class="tabpanel" id="tab-diagram">
+  <div class="card">
+    <h2>System flow</h2>
+    <div class="diagram-flow" id="diagramFlow"></div>
+  </div>
+  <div class="card">
+    <h2>Arduino prototype concept <small>illustrative, not connected to hardware</small></h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.5;">
+      This simulator runs entirely as a software model. The layout below shows how the same variables could
+      eventually be read from physical sensors and actuators controlled by a microcontroller — it is a wiring
+      concept only, not a live hardware connection.
+    </p>
+    <div class="diagram-flow">
+      <div class="diagram-node"><span>ESP32 / Arduino board</span><span class="tag">controller</span></div>
+      <div class="diagram-arrow">├──</div>
+      <div class="diagram-node"><span>CO₂ sensor (e.g. NDIR)</span><span class="tag">input</span></div>
+      <div class="diagram-arrow">├──</div>
+      <div class="diagram-node"><span>Temperature sensor</span><span class="tag">input</span></div>
+      <div class="diagram-arrow">├──</div>
+      <div class="diagram-node"><span>pH sensor</span><span class="tag">input</span></div>
+      <div class="diagram-arrow">├──</div>
+      <div class="diagram-node"><span>O₂ sensor</span><span class="tag">input</span></div>
+      <div class="diagram-arrow">├──</div>
+      <div class="diagram-node"><span>Fan / air pump</span><span class="tag">output</span></div>
+      <div class="diagram-arrow">├──</div>
+      <div class="diagram-node"><span>LED grow light</span><span class="tag">output</span></div>
+      <div class="diagram-arrow">└──</div>
+      <div class="diagram-node"><span>Display / dashboard</span><span class="tag">output</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== EXPERIMENT TAB ===================== -->
+<section class="tabpanel" id="tab-experiment">
+  <div class="card">
+    <h2>Virtual experiment</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin-top:0;">
+      Sweep one parameter across a range while holding the rest of the current dashboard settings fixed, and see its
+      approximate steady-state effect on CO₂ removal efficiency. This uses the same simplified model as the dashboard.
+    </p>
+    <div class="ctrl">
+      <label>Parameter to sweep</label>
+      <select id="expParam">
+        <option value="airflow">Airflow (L/min)</option>
+        <option value="light">Light intensity (%)</option>
+        <option value="biomass">Biomass (g/L)</option>
+        <option value="temp">Temperature (°C)</option>
+        <option value="ph">pH</option>
+      </select>
+    </div>
+    <div class="btnrow">
+      <button class="btn" id="btnRunExperiment">Run sweep</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Result <small id="expResultLabel"></small></h2>
+    <canvas class="chart" id="chartExperiment"></canvas>
+  </div>
+</section>
+
+<!-- ===================== REPORT TAB ===================== -->
+<section class="tabpanel" id="tab-report">
+  <div class="card">
+    <h2>Simulation assumptions</h2>
+    <ul class="limit-list">
+      <li>Algae require light as an energy source for photosynthesis.</li>
+      <li>Photosynthesis is modeled as the primary CO₂-consuming process.</li>
+      <li>Growth depends on light, CO₂ availability, temperature, pH and nutrients, combined as simplified multiplicative factors.</li>
+      <li>Gas–liquid CO₂ transfer between air and the algae culture is simplified, not solved from first principles.</li>
+      <li>Actual CO₂ removal in a real reactor depends heavily on physical design, mixing, and bubble contact area.</li>
+      <li>Real-world performance requires experimental testing and cannot be inferred from this model alone.</li>
+      <li>Algae systems modeled here do not automatically remove particulates, VOCs, NOx, bacteria, or viruses.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Limitations of this simulator</h2>
+    <ul class="limit-list">
+      <li>Simplified biological model — not species-specific.</li>
+      <li>Simplified gas transfer between air and liquid phases.</li>
+      <li>No detailed algae species or strain-level model.</li>
+      <li>No real sensor calibration — sensor values are simulated.</li>
+      <li>No experimental validation against a physical reactor.</li>
+      <li>Does not guarantee real indoor air purification performance.</li>
+      <li>O₂ values are estimates, not measurements.</li>
+      <li>Energy consumption figures are estimates based on user-entered power ratings.</li>
+      <li>Actual reactor performance may differ significantly from simulated values.</li>
+    </ul>
+    <div class="note">Educational simulation — all values are model assumptions and must be experimentally validated before drawing real-world conclusions.</div>
+  </div>
+
+  <div class="card">
+    <h2>Mathematical model summary</h2>
+    <p style="font-size:12px; line-height:1.6; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace;">
+      P = P_max · f(B) · f(L) · f(T) · f(pH) · f(CO₂)<br>
+      C_out = max(C_min, C_in − removal(P, residence time))<br>
+      dB/dt = growth_rate(P) · B − decay_rate · B<br>
+      O₂ production ≈ P · oxygen_conversion_factor
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Generate simulation report</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); margin-top:0;">Builds a plain-text summary of the current run, including inputs, results, and limitations.</p>
+    <div class="btnrow">
+      <button class="btn" id="btnReport">Generate &amp; download report</button>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  running:false,
+  simTime:0,          // minutes
+  dtMin: 1/60 * 5,     // 5 seconds of sim time per tick base
+  speedMultipliers:[1,2,5,10,50],
+  speedIdx:0,
+  co2In:800,
+  light:70,
+  temp:25,
+  ph:7.5,
+  nutrient:100,
+  airflow:20,
+  volume:30,
+  biomass:2.0,
+  co2Out:800,
+  o2pct:20.9,
+  activity:0,
+  growthPctMin:0,
+  noise:true,
+  explain:false,
+  auto:false,
+  autoTarget:800,
+  fanPower:15, ledPower:30, pumpPower:10,
+  history:{t:[],co2in:[],co2out:[],o2:[],biomass:[],eff:[]},
+  totalCo2RemovedMg:0,
+};
+const CMIN = 350; // atmospheric floor ppm
+
+/* ============================================================
+   MODEL FUNCTIONS
+   ============================================================ */
+function lightFactor(L){ const K=30; return L/(L+K); }
+function tempFactor(T){ const opt=25, sigma=8; return Math.exp(-((T-opt)**2)/(2*sigma*sigma)); }
+function phFactor(pH){ const opt=7.5, sigma=1.2; return Math.exp(-((pH-opt)**2)/(2*sigma*sigma)); }
+function co2Factor(C){ const K=400; return C/(C+K); }
+function biomassFactor(B){ const K=2; return B/(B+K); }
+
+function computeStep(p){
+  // p: {co2In, light, temp, ph, nutrient, airflow, volume, biomass}
+  const lf = lightFactor(p.light);
+  const tf = tempFactor(p.temp);
+  const pf = phFactor(p.ph);
+  const cf = co2Factor(p.co2In);
+  const nf = Math.max(0.05, p.nutrient/100);
+  const bf = biomassFactor(p.biomass);
+
+  const growthFactor = lf*tf*pf*cf*nf;      // 0..~1
+  const activity = growthFactor * bf;        // photosynthetic activity 0..~1 (P/P_max)
+
+  const residenceTimeSec = (p.volume / Math.max(p.airflow,0.01)) * 60; // seconds
+  const optimalResidence = 90; // seconds, configurable constant
+  const residenceFactor = Math.min(1, residenceTimeSec/optimalResidence);
+
+  const kRemoval = 0.85; // max removal fraction achievable at full activity + full residence
+  const removalFraction = kRemoval * activity * residenceFactor;
+  let co2Out = p.co2In * (1 - removalFraction);
+  co2Out = Math.max(CMIN, co2Out);
+  const efficiency = p.co2In > 0 ? ((p.co2In - co2Out)/p.co2In)*100 : 0;
+
+  const o2Boost = activity * 6; // percentage points boost above ambient, capped
+  let o2pct = 20.9 + Math.min(6, o2Boost);
+  o2pct = Math.min(25, o2pct);
+
+  const growthRateMax = 0.05; // per minute
+  const decayRate = 0.01; // per minute
+  const growthPctMin = (growthRateMax*growthFactor - decayRate) * 100;
+
+  return { activity, co2Out, efficiency, o2pct, growthFactor, growthPctMin, residenceTimeSec };
+}
+
+/* ============================================================
+   DOM refs
+   ============================================================ */
+const el = id => document.getElementById(id);
+const sliders = {
+  co2: el('co2Slider'), light: el('lightSlider'), temp: el('tempSlider'),
+  ph: el('phSlider'), nutrient: el('nutrientSlider'), airflow: el('airflowSlider'),
+  volume: el('volumeSlider'), biomass: el('biomassSlider'),
+  fanPower: el('fanPowerSlider'), ledPower: el('ledPowerSlider'), pumpPower: el('pumpPowerSlider'),
+  speed: el('speedSlider'), autoTarget: el('autoTargetSlider')
+};
+
+function syncLabels(){
+  el('co2Val').textContent = state.co2In;
+  el('lightVal').textContent = state.light;
+  el('tempVal').textContent = state.temp;
+  el('phVal').textContent = state.ph.toFixed(1);
+  el('nutrientVal').textContent = state.nutrient;
+  el('airflowVal').textContent = state.airflow;
+  el('volumeVal').textContent = state.volume;
+  el('biomassVal').textContent = state.biomass.toFixed(1);
+  el('fanPowerVal').textContent = state.fanPower;
+  el('ledPowerVal').textContent = state.ledPower;
+  el('pumpPowerVal').textContent = state.pumpPower;
+  el('autoTargetVal').textContent = state.autoTarget;
+  el('speedVal').textContent = state.speedMultipliers[state.speedIdx] + '×';
+}
+
+sliders.co2.addEventListener('input', e=>{ state.co2In = +e.target.value; syncLabels(); updateStatic(); });
+sliders.light.addEventListener('input', e=>{ state.light = +e.target.value; syncLabels(); updateStatic(); });
+sliders.temp.addEventListener('input', e=>{ state.temp = +e.target.value; syncLabels(); updateStatic(); });
+sliders.ph.addEventListener('input', e=>{ state.ph = +e.target.value; syncLabels(); updateStatic(); });
+sliders.nutrient.addEventListener('input', e=>{ state.nutrient = +e.target.value; syncLabels(); updateStatic(); });
+sliders.airflow.addEventListener('input', e=>{ state.airflow = +e.target.value; syncLabels(); updateStatic(); });
+sliders.volume.addEventListener('input', e=>{ state.volume = +e.target.value; syncLabels(); updateStatic(); });
+sliders.biomass.addEventListener('input', e=>{ state.biomass = Math.max(0.01,+e.target.value); syncLabels(); updateStatic(); });
+sliders.fanPower.addEventListener('input', e=>{ state.fanPower = +e.target.value; syncLabels(); updateEnergy(); });
+sliders.ledPower.addEventListener('input', e=>{ state.ledPower = +e.target.value; syncLabels(); updateEnergy(); });
+sliders.pumpPower.addEventListener('input', e=>{ state.pumpPower = +e.target.value; syncLabels(); updateEnergy(); });
+sliders.speed.addEventListener('input', e=>{ state.speedIdx = +e.target.value; syncLabels(); });
+sliders.autoTarget.addEventListener('input', e=>{ state.autoTarget = +e.target.value; syncLabels(); });
+
+el('explainToggle').addEventListener('change', e=>{
+  state.explain = e.target.checked;
+  document.body.classList.toggle('explain-on', state.explain);
+});
+el('noiseToggle').addEventListener('change', e=>{ state.noise = e.target.checked; });
+el('autoToggle').addEventListener('change', e=>{
+  state.auto = e.target.checked;
+  el('autoTargetCtrl').style.display = state.auto ? 'block' : 'none';
+});
+
+document.querySelectorAll('.chip[data-co2]').forEach(c=>{
+  c.addEventListener('click', ()=>{
+    state.co2In = +c.dataset.co2;
+    sliders.co2.value = state.co2In;
+    syncLabels(); updateStatic();
+  });
+});
+
+const scenarios = {
+  A:{co2In:800, light:70, airflow:20, temp:25, ph:7.5, biomass:2, volume:30, nutrient:100},
+  B:{co2In:2000, light:70, airflow:20, temp:25, ph:7.5, biomass:2, volume:30, nutrient:100},
+  C:{co2In:1000, light:20, airflow:20, temp:25, ph:7.5, biomass:2, volume:30, nutrient:100},
+  D:{co2In:1000, light:70, airflow:80, temp:25, ph:7.5, biomass:2, volume:30, nutrient:100},
+  E:{co2In:1000, light:70, airflow:20, temp:35, ph:7.5, biomass:2, volume:30, nutrient:100},
+  F:{co2In:1200, light:85, airflow:15, temp:25, ph:7.5, biomass:4, volume:30, nutrient:100},
+};
+document.querySelectorAll('.chip[data-scenario]').forEach(c=>{
+  c.addEventListener('click', ()=>{
+    const s = scenarios[c.dataset.scenario];
+    Object.assign(state, s);
+    sliders.co2.value=s.co2In; sliders.light.value=s.light; sliders.airflow.value=s.airflow;
+    sliders.temp.value=s.temp; sliders.ph.value=s.ph; sliders.biomass.value=s.biomass;
+    sliders.volume.value=s.volume; sliders.nutrient.value=s.nutrient;
+    syncLabels(); updateStatic();
+  });
+});
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tabpanel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    el('tab-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ============================================================
+   Charts
+   ============================================================ */
+const chartOpts = {
+  responsive:true, animation:false,
+  plugins:{ legend:{ labels:{ boxWidth:10, font:{size:10} } } },
+  scales:{
+    x:{ ticks:{ font:{size:9}, maxTicksLimit:6 }, title:{display:true,text:'min',font:{size:9}} },
+    y:{ ticks:{ font:{size:9} } }
+  }
+};
+const chartCo2 = new Chart(el('chartCo2'), {
+  type:'line',
+  data:{ labels:[], datasets:[
+    { label:'CO₂ in (ppm)', data:[], borderColor:'#2f7a4f', backgroundColor:'transparent', tension:.25, pointRadius:0 },
+    { label:'CO₂ out (ppm)', data:[], borderColor:'#1b7a91', backgroundColor:'transparent', tension:.25, pointRadius:0 }
+  ]},
+  options: chartOpts
+});
+const chartEff = new Chart(el('chartEff'), {
+  type:'line',
+  data:{ labels:[], datasets:[
+    { label:'O₂ %', data:[], borderColor:'#d98b3c', backgroundColor:'transparent', tension:.25, pointRadius:0, yAxisID:'y' },
+    { label:'Efficiency %', data:[], borderColor:'#2f7a4f', backgroundColor:'transparent', tension:.25, pointRadius:0, yAxisID:'y1' }
+  ]},
+  options: Object.assign({}, chartOpts, { scales:{
+    x:chartOpts.scales.x,
+    y:{ position:'left', ticks:{font:{size:9}}, title:{display:true,text:'O₂ %',font:{size:9}} },
+    y1:{ position:'right', ticks:{font:{size:9}}, grid:{drawOnChartArea:false}, title:{display:true,text:'Eff %',font:{size:9}} }
+  }})
+});
+const chartBiomass = new Chart(el('chartBiomass'), {
+  type:'line',
+  data:{ labels:[], datasets:[
+    { label:'Biomass (g/L)', data:[], borderColor:'#1f5636', backgroundColor:'rgba(47,122,79,0.08)', fill:true, tension:.25, pointRadius:0 }
+  ]},
+  options: chartOpts
+});
+
+function pushHistory(t, co2in, co2out, o2, biomass, eff){
+  const h = state.history;
+  h.t.push(t.toFixed(1)); h.co2in.push(co2in); h.co2out.push(co2out);
+  h.o2.push(o2); h.biomass.push(biomass); h.eff.push(eff);
+  const CAP = 240;
+  if(h.t.length>CAP){ ['t','co2in','co2out','o2','biomass','eff'].forEach(k=>h[k].shift()); }
+
+  chartCo2.data.labels = h.t; chartCo2.data.datasets[0].data = h.co2in; chartCo2.data.datasets[1].data = h.co2out;
+  chartEff.data.labels = h.t; chartEff.data.datasets[0].data = h.o2; chartEff.data.datasets[1].data = h.eff;
+  chartBiomass.data.labels = h.t; chartBiomass.data.datasets[0].data = h.biomass;
+  chartCo2.update('none'); chartEff.update('none'); chartBiomass.update('none');
+}
+
+/* ============================================================
+   Reactor animation (bubbles + algae dots)
+   ============================================================ */
+const svgNS = "http://www.w3.org/2000/svg";
+const bubbleGroup = el('bubbleGroup');
+const algaeGroup = el('algaeGroup');
+
+function initReactorDots(){
+  algaeGroup.innerHTML='';
+  for(let i=0;i<16;i++){
+    const c = document.createElementNS(svgNS,'circle');
+    const x = 65 + Math.random()*170;
+    const y = 175 + Math.random()*95;
+    c.setAttribute('cx',x); c.setAttribute('cy',y); c.setAttribute('r', 2.5+Math.random()*2);
+    c.setAttribute('fill', i%2? '#2f7a4f':'#4fa06c');
+    c.setAttribute('class','algae-dot');
+    c.style.animationDuration = (2+Math.random()*3)+'s';
+    algaeGroup.appendChild(c);
+  }
+}
+function initBubbles(){
+  bubbleGroup.innerHTML='';
+  for(let i=0;i<12;i++){
+    const c = document.createElementNS(svgNS,'circle');
+    const x = 70 + Math.random()*160;
+    c.setAttribute('cx',x); c.setAttribute('cy',270); c.setAttribute('r', 1.5+Math.random()*2);
+    c.setAttribute('fill', '#bfe3d8'); c.setAttribute('stroke','#1b7a91'); c.setAttribute('stroke-width','0.4');
+    c.setAttribute('class','bubble');
+    c.style.animationDelay = (Math.random()*3)+'s';
+    bubbleGroup.appendChild(c);
+    c.dataset.baseDuration = 2.5 + Math.random()*2;
+  }
+}
+initReactorDots(); initBubbles();
+
+function updateReactorAnim(){
+  const speed = state.speedMultipliers[state.speedIdx];
+  const act = Math.max(0.02, state.activity);
+  // bubble speed scales with activity (more activity -> faster/more visible bubbling)
+  document.querySelectorAll('.bubble').forEach(b=>{
+    const base = +b.dataset.baseDuration;
+    const dur = Math.max(0.6, base / (0.4+act*1.6));
+    b.style.animationDuration = dur+'s';
+    b.style.animationPlayState = state.running ? 'running':'paused';
+  });
+  document.querySelectorAll('.algae-dot').forEach(d=>{
+    d.style.animationPlayState = state.running ? 'running':'paused';
+  });
+  el('fanGroup').style.animationDuration = state.running ? Math.max(0.15, 1.2/Math.min(speed,10))+'s' : '0s';
+  el('fanGroup').style.animationPlayState = state.running ? 'running':'paused';
+  el('ledBar').style.opacity = 0.25 + (state.light/100)*0.65;
+}
+
+/* ============================================================
+   Status / warnings
+   ============================================================ */
+function updateStatus(){
+  const strip = el('statusStrip');
+  strip.classList.remove('run','warn','stop');
+  let warnings = [];
+  if(state.biomass < 0.3) warnings.push('Low algae biomass');
+  if(state.light < 10) warnings.push('Low light');
+  if(state.temp > 36 || state.temp < 12) warnings.push('Temperature outside favorable range');
+  if(state.ph < 6 || state.ph > 9) warnings.push('pH far from optimum');
+  if(state.airflow > 85) warnings.push('Excessive airflow — short residence time');
+  if(state.co2In < 380) warnings.push('Very low inlet CO₂');
+
+  if(!state.running){
+    strip.classList.add('stop');
+    el('statusText').textContent = 'System stopped — press Start';
+    el('runBadge').textContent = '● PAUSED';
+  } else if(warnings.length){
+    strip.classList.add('warn');
+    el('statusText').textContent = '⚠ ' + warnings.join(' · ');
+    el('runBadge').textContent = '● RUNNING (warning)';
+  } else {
+    strip.classList.add('run');
+    el('statusText').textContent = 'System running normally';
+    el('runBadge').textContent = '● RUNNING';
+  }
+}
+
+/* ============================================================
+   Energy
+   ============================================================ */
+function updateEnergy(){
+  const totalW = state.fanPower + state.ledPower + state.pumpPower;
+  const kWhHr = totalW/1000;
+  el('mEnergyHr').innerHTML = kWhHr.toFixed(3)+'<span class="m-unit"> kWh</span>';
+  el('mEnergyDay').innerHTML = (kWhHr*24).toFixed(2)+'<span class="m-unit"> kWh</span>';
+
+  // estimate kg CO2 removed per hour from current rate
+  const removedPpm = Math.max(0, state.co2In - state.co2Out);
+  // rough mass conversion: mg CO2 per L per ppm ≈ 0.0018 (order-of-magnitude educational approximation)
+  const mgPerMin = removedPpm * state.airflow * 0.0018;
+  const kgPerHr = (mgPerMin*60)/1e6;
+  if(kgPerHr > 0.00001){
+    el('mEnergyPerKg').innerHTML = (kWhHr/kgPerHr).toFixed(2)+'<span class="m-unit"> kWh/kg</span>';
+  } else {
+    el('mEnergyPerKg').innerHTML = '—<span class="m-unit"> kWh/kg</span>';
+  }
+}
+
+/* ============================================================
+   Static recompute (when paused, still show instantaneous readout)
+   ============================================================ */
+function updateStatic(){
+  const r = computeStep(state);
+  state.co2Out = r.co2Out; state.o2pct = r.o2pct; state.activity = r.activity; state.growthPctMin = r.growthPctMin;
+  renderMetrics(r);
+  updateReactorAnim();
+  updateStatus();
+  updateEnergy();
+}
+
+function withNoise(v, magnitude){
+  if(!state.noise) return v;
+  return v + (Math.random()-0.5)*2*magnitude;
+}
+
+function renderMetrics(r){
+  const co2InN = Math.max(0, withNoise(state.co2In, state.co2In*0.01));
+  const co2OutN = Math.max(CMIN-20, withNoise(r.co2Out, r.co2Out*0.01));
+  const o2N = Math.max(0, withNoise(r.o2pct, 0.05));
+  const phN = Math.max(0, withNoise(state.ph, 0.03));
+  const tempN = withNoise(state.temp, 0.15);
+
+  el('mCo2In').innerHTML = Math.round(co2InN)+'<span class="m-unit"> ppm</span>';
+  el('mCo2Out').innerHTML = Math.round(co2OutN)+'<span class="m-unit"> ppm</span>';
+  el('mEff').innerHTML = r.efficiency.toFixed(1)+'<span class="m-unit"> %</span>';
+  el('mO2').innerHTML = o2N.toFixed(2)+'<span class="m-unit"> %</span>';
+  el('mBiomass').innerHTML = state.biomass.toFixed(2)+'<span class="m-unit"> g/L</span>';
+  el('mGrowth').innerHTML = r.growthPctMin.toFixed(2)+'<span class="m-unit"> %/min</span>';
+  el('mResidence').innerHTML = r.residenceTimeSec.toFixed(0)+'<span class="m-unit"> s</span>';
+  el('mActivity').innerHTML = (r.activity*100).toFixed(0)+'<span class="m-unit"> %</span>';
+
+  const perf = Math.max(0, Math.min(100, r.efficiency*0.5 + r.activity*40 + Math.min(10, (100-Math.abs(state.temp-25)*2)*0.1)));
+  el('perfFill').style.width = perf.toFixed(0)+'%';
+  el('perfLabel').textContent = perf.toFixed(0)+'%';
+
+  el('baCo2Before').textContent = Math.round(state.co2In)+' ppm';
+  el('baO2Before').textContent = '20.90%';
+  el('baActBefore').textContent = '0% activity';
+  el('baCo2After').textContent = Math.round(r.co2Out)+' ppm';
+  el('baO2After').textContent = r.o2pct.toFixed(2)+'%';
+  el('baActAfter').textContent = (r.activity*100).toFixed(0)+'% activity';
+}
+
+/* ============================================================
+   Simulation loop
+   ============================================================ */
+let loopHandle = null;
+function tick(){
+  const speed = state.speedMultipliers[state.speedIdx];
+  const dt = state.dtMin * speed; // minutes advanced this tick
+
+  if(state.auto){
+    // simple controller: nudge airflow and light toward the target CO2
+    const err = state.co2Out - state.autoTarget;
+    if(err > 15 && state.airflow < 100){ state.airflow = Math.min(100, state.airflow+1); sliders.airflow.value=state.airflow; }
+    else if(err < -15 && state.airflow > 1){ state.airflow = Math.max(1, state.airflow-1); sliders.airflow.value=state.airflow; }
+    if(err > 15 && state.light < 100){ state.light = Math.min(100, state.light+1); sliders.light.value=state.light; }
+    syncLabels();
+  }
+
+  const r = computeStep(state);
+  // integrate biomass
+  const growthRateMax = 0.05, decayRate = 0.01;
+  const dB = (growthRateMax*r.growthFactor - decayRate) * state.biomass * dt;
+  state.biomass = Math.max(0.01, state.biomass + dB);
+  sliders.biomass.value = state.biomass.toFixed(2);
+
+  state.co2Out = r.co2Out; state.o2pct = r.o2pct; state.activity = r.activity; state.growthPctMin = r.growthPctMin;
+  state.simTime += dt;
+
+  syncLabels();
+  renderMetrics(r);
+  updateReactorAnim();
+  updateStatus();
+  updateEnergy();
+
+  el('simTimeBadge').textContent = state.simTime.toFixed(1);
+
+  pushHistory(state.simTime, Math.round(state.co2In), Math.round(r.co2Out), r.o2pct, state.biomass, r.efficiency);
+  appendTableRow(state.simTime, state.co2In, r.co2Out, r.o2pct, state.biomass, state.temp, state.ph, state.airflow);
+}
+
+function startLoop(){
+  if(loopHandle) return;
+  state.running = true;
+  loopHandle = setInterval(tick, 400);
+  updateStatus();
+}
+function pauseLoop(){
+  state.running = false;
+  clearInterval(loopHandle); loopHandle = null;
+  updateStatus(); updateReactorAnim();
+}
+function resetSim(){
+  pauseLoop();
+  state.simTime = 0;
+  state.biomass = 2.0; sliders.biomass.value = 2.0;
+  state.history = {t:[],co2in:[],co2out:[],o2:[],biomass:[],eff:[]};
+  ['chartCo2','chartEff','chartBiomass'].forEach(()=>{});
+  chartCo2.data.labels=[]; chartCo2.data.datasets.forEach(d=>d.data=[]); chartCo2.update();
+  chartEff.data.labels=[]; chartEff.data.datasets.forEach(d=>d.data=[]); chartEff.update();
+  chartBiomass.data.labels=[]; chartBiomass.data.datasets.forEach(d=>d.data=[]); chartBiomass.update();
+  el('dataTableBody').innerHTML=''; el('rowCount').textContent='0';
+  el('simTimeBadge').textContent='0';
+  syncLabels();
+  updateStatic();
+}
+
+el('btnStart').addEventListener('click', startLoop);
+el('btnPause').addEventListener('click', pauseLoop);
+el('btnReset').addEventListener('click', resetSim);
+
+/* ============================================================
+   Data table + CSV
+   ============================================================ */
+let tableRows = [];
+function appendTableRow(t,ci,co,o2,b,temp,ph,flow){
+  tableRows.push([t.toFixed(1),ci.toFixed(0),co.toFixed(0),o2.toFixed(2),b.toFixed(2),temp.toFixed(1),ph.toFixed(1),flow.toFixed(0)]);
+  if(tableRows.length>500) tableRows.shift();
+  const tbody = el('dataTableBody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${t.toFixed(1)}</td><td>${ci.toFixed(0)}</td><td>${co.toFixed(0)}</td><td>${o2.toFixed(2)}</td><td>${b.toFixed(2)}</td><td>${temp.toFixed(1)}</td><td>${ph.toFixed(1)}</td><td>${flow.toFixed(0)}</td>`;
+  tbody.appendChild(tr);
+  while(tbody.children.length>500) tbody.removeChild(tbody.firstChild);
+  el('rowCount').textContent = tableRows.length;
+  tbody.parentElement.scrollTop = tbody.parentElement.scrollHeight;
+}
+el('btnExportCsv').addEventListener('click', ()=>{
+  const header = 'time_min,co2_in_ppm,co2_out_ppm,o2_pct,biomass_gL,temp_C,pH,airflow_Lmin\n';
+  const body = tableRows.map(r=>r.join(',')).join('\n');
+  downloadBlob(header+body, 'algae_simulator_data.csv', 'text/csv');
+});
+function downloadBlob(content, filename, type){
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   Report generation
+   ============================================================ */
+el('btnReport').addEventListener('click', ()=>{
+  const r = computeStep(state);
+  const lines = [
+    'ALGAE AIR PURIFIER SIMULATOR — SIMULATION REPORT',
+    'Educational simulation. Values are model assumptions and must be experimentally validated.',
+    '',
+    'Objective: demonstrate simplified CO2 removal via an algae photobioreactor model.',
+    '',
+    '--- Input parameters ---',
+    `Inlet CO2: ${state.co2In} ppm`,
+    `Light intensity: ${state.light} %`,
+    `Temperature: ${state.temp} C`,
+    `pH: ${state.ph.toFixed(1)}`,
+    `Nutrient availability: ${state.nutrient} %`,
+    `Airflow: ${state.airflow} L/min`,
+    `Reactor volume: ${state.volume} L`,
+    `Biomass: ${state.biomass.toFixed(2)} g/L`,
+    '',
+    '--- Results (current state) ---',
+    `Outlet CO2: ${r.co2Out.toFixed(0)} ppm`,
+    `Removal efficiency: ${r.efficiency.toFixed(1)} %`,
+    `O2 at outlet: ${r.o2pct.toFixed(2)} %`,
+    `Photosynthetic activity: ${(r.activity*100).toFixed(0)} %`,
+    `Residence time: ${r.residenceTimeSec.toFixed(0)} s`,
+    `Simulation time elapsed: ${state.simTime.toFixed(1)} min`,
+    '',
+    '--- Mathematical model ---',
+    'P = P_max * f(B) * f(L) * f(T) * f(pH) * f(CO2)',
+    'C_out = max(C_min, C_in - removal(P, residence time))',
+    'dB/dt = growth_rate(P)*B - decay_rate*B',
+    'O2 production ~ P * oxygen_conversion_factor',
+    '',
+    '--- Limitations ---',
+    '- Simplified biological and gas-transfer model, not species-specific.',
+    '- No experimental validation against a physical reactor.',
+    '- Does not remove particulates, VOCs, NOx, bacteria, or viruses in this model.',
+    '- O2 and energy figures are estimates only.',
+    '',
+    'Conclusion: this run illustrates directional trends under the stated assumptions only.'
+  ];
+  downloadBlob(lines.join('\n'), 'algae_simulator_report.txt', 'text/plain');
+});
+
+/* ============================================================
+   Diagram tab content
+   ============================================================ */
+const diagramNodes = [
+  ['Room air', 'the air being drawn into the system before treatment'],
+  ['CO₂ sensor', 'measures inlet CO₂ concentration, simulated in this model'],
+  ['Fan', 'moves air through the intake at the set airflow rate'],
+  ['Air diffuser', 'breaks incoming air into bubbles inside the algae culture to increase gas contact area'],
+  ['Algae bioreactor', 'liquid vessel where algae biomass performs photosynthesis, consuming CO2 under light'],
+  ['LED light', 'provides the light energy driving photosynthesis, modeled with a saturation curve'],
+  ['Temperature sensor', 'monitors culture temperature against the optimum range in the model'],
+  ['pH sensor', 'monitors culture pH against the optimum range in the model'],
+  ['O₂ sensor', 'estimates oxygen produced by photosynthetic activity'],
+  ['Air outlet', 'treated air leaving the reactor and returning to the room'],
+  ['Optional particulate filter', 'a separate physical filter module — not modeled as part of the algae process itself'],
+];
+const flowEl = el('diagramFlow');
+diagramNodes.forEach((n,i)=>{
+  const node = document.createElement('div');
+  node.className='diagram-node';
+  node.innerHTML = `<span>${n[0]}</span><span class="tag">tap for detail</span>`;
+  const detail = document.createElement('div');
+  detail.className='node-detail';
+  detail.textContent = n[1];
+  node.addEventListener('click', ()=> detail.classList.toggle('open'));
+  flowEl.appendChild(node);
+  flowEl.appendChild(detail);
+  if(i<diagramNodes.length-1){
+    const arrow = document.createElement('div');
+    arrow.className='diagram-arrow'; arrow.textContent='↓';
+    flowEl.appendChild(arrow);
+  }
+});
+
+/* ============================================================
+   Experiment mode
+   ============================================================ */
+const chartExperiment = new Chart(el('chartExperiment'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ label:'Removal efficiency %', data:[], borderColor:'#2f7a4f', backgroundColor:'rgba(47,122,79,0.08)', fill:true, tension:.25, pointRadius:3 }]},
+  options: chartOpts
+});
+const expRanges = {
+  airflow: {min:5,max:100,step:10,unit:'L/min'},
+  light: {min:5,max:100,step:10,unit:'%'},
+  biomass: {min:0.2,max:10,step:1,unit:'g/L'},
+  temp: {min:10,max:40,step:3,unit:'°C'},
+  ph: {min:5,max:10,step:0.5,unit:''}
+};
+el('btnRunExperiment').addEventListener('click', ()=>{
+  const paramKey = el('expParam').value;
+  const cfg = expRanges[paramKey];
+  const labels=[]; const data=[];
+  const base = { co2In:state.co2In, light:state.light, temp:state.temp, ph:state.ph, nutrient:state.nutrient, airflow:state.airflow, volume:state.volume, biomass:state.biomass };
+  const stateKeyMap = { airflow:'airflow', light:'light', biomass:'biomass', temp:'temp', ph:'ph' };
+  for(let v=cfg.min; v<=cfg.max+1e-9; v+=cfg.step){
+    const testState = Object.assign({}, base);
+    testState[stateKeyMap[paramKey]] = v;
+    const r = computeStep(testState);
+    labels.push(v.toFixed(paramKey==='ph'?1: (paramKey==='biomass'?1:0)));
+    data.push(+r.efficiency.toFixed(1));
+  }
+  chartExperiment.data.labels = labels;
+  chartExperiment.data.datasets[0].data = data;
+  chartExperiment.data.datasets[0].label = `Removal efficiency % vs ${el('expParam').options[el('expParam').selectedIndex].text}`;
+  chartExperiment.update();
+  el('expResultLabel').textContent = `holding other parameters at current dashboard settings`;
+});
+
+/* ============================================================
+   Init
+   ============================================================ */
+syncLabels();
+updateStatic();
+</script>
+
+</body>
+</html>
